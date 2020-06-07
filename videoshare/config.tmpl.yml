@@ -1,0 +1,7 @@
+videoshare:
+  profile: ''
+  stackName: ''
+  uploadBucket: ''
+  transcodeBucket: ''
+  databaseurl: ''
+  auth0Domain: ''

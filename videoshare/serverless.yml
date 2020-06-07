@@ -1,0 +1,202 @@
+service:
+  name: Videosharing
+
+provider:
+  name: aws
+  profile: ${file(config.${self:custom.stage}.yml):videoshare.profile}
+  runtime: nodejs12.x
+  stackName: ${file(config.${self:custom.stage}.yml):videoshare.stackName}
+  stage: ${opt:stage, 'dev'}
+  iamManagedPolicies:
+    - arn:aws:iam::aws:policy/AWSLambdaExecute
+    - arn:aws:iam::aws:policy/AmazonElasticTranscoder_FullAccess
+
+custom:
+  uploadBucket: ${file(config.${self:custom.stage}.yml):videoshare.uploadBucket}
+  transcodeBucket: ${file(config.${self:custom.stage}.yml):videoshare.transcodeBucket}
+  databaseUrl: ${file(config.${self:custom.stage}.yml):videoshare.databaseurl}
+  auth0Domain: ${file(config.${self:custom.stage}.yml):videoshare.auth0Domain}
+
+functions:
+  videotranscoder:
+    handler: index.handler
+    events:
+      - s3:
+          bucket: ${self:custom.uploadBucket}
+          event: s3:ObjectCreated:*
+          existing: true
+          rule:
+            - suffix: .mp4
+    environment:
+      ELASTIC_TRANSCODER_REGION: !Ref 'AWS::Region'
+      ELASTIC_TRANSCODER_PIPELINE_ID: !GetAtt ElasticTranscoderPipeline.Id
+      DATABASE_URL: ${self:custom.databaseUrl}
+  pushurltofirebase:
+    handler: pushurlstofirebase.handler
+    events:
+      - s3:
+          bucket: ${self:custom.transcodeBucket}
+          event: s3:ObjectCreated:*
+          existing: true
+          rule:
+            - suffix: .mp4
+    environment:
+      DATABASE_URL: ${self:custom.databaseUrl}
+      S3_TRANSCODED_BUCKET_URL: https://s3.amazonaws.com/${self:custom.transcodeBucket}
+
+  pipeline:
+    handler: pipeline.handler
+    environment:
+      ELASTIC_TRANSCODER_REGION: !Ref 'AWS::Region'
+  getuploadpolicy:
+    handler: create-s3-upload-link.handler
+    timeout: 30
+    events:
+      - http:
+          path: /s3-upload-link
+          method: get
+          request:
+            parameters:
+              querystrings:
+                filename: true
+                filetype: true
+              headers:
+                authorization: true
+          cors:
+            origin: "*"
+          authorizer:
+            name: customauthorizer
+            resultTtlInSeconds: 300
+            identitySource: method.request.header.Authorization
+            type: token
+
+    environment:
+      ACCESS_KEY_ID: !Ref UploadVideoUserAccessKey
+      SECRET_ACCESS_KEY: !GetAtt UploadVideoUserAccessKey.SecretAccessKey
+      UPLOAD_BUCKET_NAME: ${self:custom.uploadBucket}
+      UPLOAD_URI: https://s3.amazonaws.com
+  customauthorizer:
+    handler: customauthorizer.handler
+    timeout: 30
+    memorySize: 1536
+    environment:
+      AUTH0_DOMAIN: ${self:custom.auth0Domain}
+  userprofile:
+    handler: userprofile.handler
+    timeout: 30
+    events:
+      - http:
+          path: /user-profile
+          method: get
+          cors:
+            origin: '*'
+          authorizer:
+            name: customauthorizer
+            resultTtlInSeconds: 300
+            identitySource: method.request.header.Authorization
+            type: token
+    environment:
+      AUTH0_DOMAIN: ${self:custom.auth0Domain}
+
+resources:
+  Resources:
+    UploadVideoUserAccessKey:
+      Type: AWS::IAM::AccessKey
+      Properties:
+        UserName: !Ref UploadVideoUser
+    UploadVideoUser:
+      Type: AWS::IAM::User
+      Properties:
+        Path: "/"
+        UserName: "upload-s3"
+        Policies:
+        - PolicyName: giveaccesstos3videosharebuckets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: "s3:ListBucket"
+              Resource: "arn:aws:s3:::${self:custom.uploadBucket}"
+            - Effect: Allow
+              Action: "s3:PutObject"
+              Resource: "arn:aws:s3:::${self:custom.transcodeBucket}/*"
+    TrascodedBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.transcodeBucket}
+    TrascodedBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: ${self:custom.transcodeBucket}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action: ['s3:GetObject']
+            Effect: Allow
+            Principal: "*"
+            Resource:
+              - Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - Ref: TrascodedBucket
+                  - /*
+    UploadBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.uploadBucket}
+        CorsConfiguration:
+          CorsRules:
+           - AllowedHeaders: ["*"]
+             AllowedOrigins: ["*"]
+             AllowedMethods: [GET,POST]
+             MaxAge: 3000
+    PipelineRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        AssumeRolePolicyDocument:
+          Version : "2012-10-17"
+          Statement:
+          - Action: ['sts:AssumeRole']
+            Effect: Allow
+            Principal:
+              Service: [elastictranscoder.amazonaws.com]
+    PipelinePolicy:
+      Type: "AWS::IAM::Policy"
+      Properties:
+        PolicyName: "videosharepipeline-policy"
+        Roles:
+          - Ref: PipelineRole
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Effect: Allow
+            Action:
+              - "s3:Put*"
+              - "s3:ListBucket"
+              - "s3:*MultipartUpload*"
+              - "s3:Get*"
+            Resource: "*"
+          - Effect: Deny
+            Action:
+              - "s3:*Delete*"
+              - "s3:*Policy*"
+            Resource: "*"
+    ElasticTranscoderPipeline:
+      Type: "Custom::ElasticTranscoderPipeline"
+      Version: "1.0"
+      Properties:
+        ServiceToken: !GetAtt PipelineLambdaFunction.Arn
+        Name: VideosharingPipeline
+        Role:
+          - Fn::GetAtt:
+             - PipelineRole
+             - Arn
+        InputBucket:
+          - Ref: UploadBucket
+        OutputBucket:
+          - Ref: TrascodedBucket
+package:
+  exclude:
+    - package.json
+  include:
+    - node_modules/**

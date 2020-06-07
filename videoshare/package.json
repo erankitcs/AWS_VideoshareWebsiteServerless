@@ -1,0 +1,27 @@
+{
+  "name": "videoshare",
+  "version": "1.0.0",
+  "description": "This project is aiming to build a serverless website on AWS for video sharing.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erankitcs/AWS_VideoshareWebsiteServerless.git"
+  },
+  "author": "Ankit",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/erankitcs/AWS_VideoshareWebsiteServerless/issues"
+  },
+  "homepage": "https://github.com/erankitcs/AWS_VideoshareWebsiteServerless#readme",
+  "dependencies": {
+    "cfn-response": "^1.0.1",
+    "crypto": "^1.0.1",
+    "firebase-admin": "^8.12.1",
+    "jsonwebtoken": "^8.5.1",
+    "request": "^2.88.2",
+    "request-promise": "^4.2.5"
+  }
+}

@@ -1,0 +1,5 @@
+node_modules
+.serverless
+config.dev.yml
+config.js
+serverless-workshop-key.json
