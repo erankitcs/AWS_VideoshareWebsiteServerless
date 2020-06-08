@@ -15,3 +15,9 @@ This project is aiming to build a serverless website on AWS for video sharing. I
   - How to create custom resource in serverless if cloudformation template is not available. I did it through calling Custom Lambda function during cloudformation deployment.
   - How to create Lambda authorizer for API Gateway.
   - Create user and pass on keys to Lambda function.
+
+### Architecture
+
+![Screenshot](videoshare_arch.png)
+
+![Screenshot](VideoShare.gif)
