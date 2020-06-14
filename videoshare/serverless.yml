@@ -16,6 +16,7 @@ custom:
   transcodeBucket: ${file(config.${self:custom.stage}.yml):videoshare.transcodeBucket}
   databaseUrl: ${file(config.${self:custom.stage}.yml):videoshare.databaseurl}
   auth0Domain: ${file(config.${self:custom.stage}.yml):videoshare.auth0Domain}
+  stage: ${opt:stage, 'dev'}
 
 functions:
   videotranscoder:
